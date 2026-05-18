@@ -1,0 +1,19 @@
+# env
+.env
+.env.local
+
+# build artifacts
+/ainews
+web/dist
+web/node_modules
+
+# Go
+*.test
+*.out
+
+# Claude Code local state
+.claude/session_memory.db
+.claude/settings.local.json
+
+# OS
+.DS_Store
