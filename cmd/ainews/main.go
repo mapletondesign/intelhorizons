@@ -107,16 +107,19 @@ func runMigrations(ctx context.Context, st *store.Store) error {
 	if err != nil {
 		return fmt.Errorf("glob migrations: %w", err)
 	}
-	sqls := make([]string, 0, len(files))
+	migrations := make([]store.Migration, 0, len(files))
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", f, err)
 		}
-		sqls = append(sqls, string(b))
+		migrations = append(migrations, store.Migration{
+			Filename: filepath.Base(f),
+			SQL:      string(b),
+		})
 	}
-	log.Printf("migrations: running %d file(s)", len(sqls))
-	return st.RunMigrations(ctx, sqls)
+	log.Printf("migrations: found %d file(s)", len(migrations))
+	return st.RunMigrations(ctx, migrations)
 }
 
 func requireEnv(key string) string {

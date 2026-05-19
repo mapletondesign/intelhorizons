@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"intelhorizons/internal/cache"
 	"intelhorizons/internal/store"
@@ -24,18 +26,19 @@ func New(st *store.Store, ca *cache.Cache) *Handler {
 
 func (h *Handler) Router() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(corsMiddleware)
+	r.Use(chimw.RealIP)
+	r.Use(chimw.RequestID)
+	r.Use(chimw.Logger)
+	r.Use(chimw.Recoverer)
+	r.Use(corsMiddleware(envOr("CORS_ORIGIN", "https://intelhorizons.com")))
+	r.Use(securityHeaders)
 
 	r.Get("/api/feed", h.feed)
 	r.Get("/api/digest", h.digest)
 	r.Get("/api/sources", h.sources)
 	r.Get("/healthz", h.healthz)
 
-	// Serve Vue frontend from embedded or local dist
-	r.Handle("/*", http.FileServer(http.Dir("web/dist")))
+	r.Handle("/*", spaHandler("web/dist"))
 
 	return r
 }
@@ -54,70 +57,117 @@ func (h *Handler) feed(w http.ResponseWriter, r *http.Request) {
 	cacheKey := h.cache.FeedKey(q.SourceID, q.Limit, q.Offset, q.Search)
 	var articles []store.Article
 	if hit, err := h.cache.Get(r.Context(), cacheKey, &articles); err != nil {
-		log.Printf("cache get: %v", err)
+		log.Printf("[%s] cache get feed: %v", chimw.GetReqID(r.Context()), err)
 	} else if hit {
-		writeJSON(w, articles)
+		writeJSON(w, http.StatusOK, articles)
 		return
 	}
 
 	articles, err := h.store.Feed(r.Context(), q)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		log.Printf("store.Feed: %v", err)
+		log.Printf("[%s] store.Feed: %v", chimw.GetReqID(r.Context()), err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	if err := h.cache.Set(r.Context(), cacheKey, articles, h.cache.FeedTTL()); err != nil {
-		log.Printf("cache set: %v", err)
+		log.Printf("[%s] cache set feed: %v", chimw.GetReqID(r.Context()), err)
 	}
 
-	writeJSON(w, articles)
+	writeJSON(w, http.StatusOK, articles)
 }
 
 func (h *Handler) digest(w http.ResponseWriter, r *http.Request) {
 	key := h.cache.DigestKey()
 	var articles []store.Article
 	if hit, err := h.cache.Get(r.Context(), key, &articles); err != nil {
-		log.Printf("cache get: %v", err)
+		log.Printf("[%s] cache get digest: %v", chimw.GetReqID(r.Context()), err)
 	} else if hit {
-		writeJSON(w, articles)
+		writeJSON(w, http.StatusOK, articles)
 		return
 	}
 
 	articles, err := h.store.DailyDigest(r.Context(), 20)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		log.Printf("store.DailyDigest: %v", err)
+		log.Printf("[%s] store.DailyDigest: %v", chimw.GetReqID(r.Context()), err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	if err := h.cache.Set(r.Context(), key, articles, h.cache.DigestTTL()); err != nil {
-		log.Printf("cache set: %v", err)
+		log.Printf("[%s] cache set digest: %v", chimw.GetReqID(r.Context()), err)
 	}
 
-	writeJSON(w, articles)
+	writeJSON(w, http.StatusOK, articles)
 }
 
 func (h *Handler) sources(w http.ResponseWriter, r *http.Request) {
 	sources, err := h.store.AllSources(r.Context())
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		log.Printf("store.AllSources: %v", err)
+		log.Printf("[%s] store.AllSources: %v", chimw.GetReqID(r.Context()), err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	writeJSON(w, sources)
+	if sources == nil {
+		sources = []store.Source{}
+	}
+	writeJSON(w, http.StatusOK, sources)
 }
 
 func (h *Handler) healthz(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+	dbOk := h.store.Ping(r.Context()) == nil
+	redisOk := h.cache.Ping(r.Context()) == nil
+
+	status := "ok"
+	code := http.StatusOK
+	if !dbOk || !redisOk {
+		status = "degraded"
+		code = http.StatusServiceUnavailable
+	}
+
+	writeJSON(w, code, map[string]any{
+		"status": status,
+		"db":     dbOk,
+		"redis":  redisOk,
+	})
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("json encode: %v", err)
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func corsMiddleware(allowedOrigin string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if allowedOrigin != "" && origin == allowedOrigin {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func queryInt(r *http.Request, key string, def int) int {
@@ -132,15 +182,23 @@ func queryInt(r *http.Request, key string, def int) int {
 	return n
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+// spaHandler serves static files and falls back to index.html for unknown
+// paths so that the Vue router can handle client-side navigation.
+func spaHandler(dir string) http.Handler {
+	fs := http.FileServer(http.Dir(dir))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "https://intelhorizons.com")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		path := filepath.Join(dir, filepath.Clean(r.URL.Path))
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			http.ServeFile(w, r, filepath.Join(dir, "index.html"))
 			return
 		}
-		next.ServeHTTP(w, r)
+		fs.ServeHTTP(w, r)
 	})
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

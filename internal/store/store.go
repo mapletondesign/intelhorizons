@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -63,6 +64,10 @@ func (s *Store) Close() {
 	s.pool.Close()
 }
 
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 func HashURL(rawURL string) string {
 	normalized := strings.ToLower(strings.TrimRight(rawURL, "/"))
 	h := sha256.Sum256([]byte(normalized))
@@ -75,7 +80,7 @@ func (s *Store) UpsertArticle(ctx context.Context, a Article) error {
 			(url_hash, url, title, summary, author, source_id, published_at, fetched_at, score, category)
 		VALUES
 			($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
-		ON CONFLICT (url_hash) DO NOTHING
+		ON CONFLICT (url_hash) DO UPDATE SET score = EXCLUDED.score, fetched_at = NOW()
 	`, a.URLHash, a.URL, a.Title, a.Summary, a.Author, a.SourceID,
 		a.PublishedAt, a.Score, a.Category)
 	return err
@@ -197,11 +202,40 @@ func (s *Store) UpdateSourceFetchedAt(ctx context.Context, id int) error {
 	return err
 }
 
-func (s *Store) RunMigrations(ctx context.Context, migrations []string) error {
-	for _, sql := range migrations {
-		if _, err := s.pool.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("migration: %w", err)
+type Migration struct {
+	Filename string
+	SQL      string
+}
+
+func (s *Store) RunMigrations(ctx context.Context, migrations []Migration) error {
+	if _, err := s.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			filename   TEXT        PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	for _, m := range migrations {
+		var applied bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE filename = $1)`, m.Filename,
+		).Scan(&applied); err != nil {
+			return fmt.Errorf("check %s: %w", m.Filename, err)
 		}
+		if applied {
+			continue
+		}
+		if _, err := s.pool.Exec(ctx, m.SQL); err != nil {
+			return fmt.Errorf("run %s: %w", m.Filename, err)
+		}
+		if _, err := s.pool.Exec(ctx,
+			`INSERT INTO schema_migrations (filename) VALUES ($1)`, m.Filename,
+		); err != nil {
+			return fmt.Errorf("record %s: %w", m.Filename, err)
+		}
+		log.Printf("migrations: applied %s", m.Filename)
 	}
 	return nil
 }
