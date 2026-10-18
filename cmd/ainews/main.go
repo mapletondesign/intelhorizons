@@ -8,12 +8,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"intelhorizons/internal/api"
 	"intelhorizons/internal/cache"
+	"intelhorizons/internal/mailer"
 	"intelhorizons/internal/store"
+	"intelhorizons/internal/summarizer"
 	"intelhorizons/internal/worker"
 )
 
@@ -31,6 +34,11 @@ func main() {
 	dbURL := requireEnv("DATABASE_URL")
 	redisURL := env("REDIS_URL", "redis://localhost:6379")
 	twitterToken := env("TWITTER_BEARER_TOKEN", "")
+	anthropicKey := env("ANTHROPIC_API_KEY", "")
+	resendKey := env("RESEND_API_KEY", "")
+	resendFrom := env("RESEND_FROM", "IntelHorizons <digest@intelhorizons.com>")
+	siteURL := env("SITE_URL", "https://intelhorizons.com")
+	digestHour := envInt("DIGEST_HOUR", 8)
 
 	st, err := store.New(ctx, dbURL)
 	if err != nil {
@@ -56,16 +64,24 @@ func main() {
 		log.Printf("warn: redis unavailable (%v) — caching disabled", err)
 	}
 
+	ml := mailer.New(resendKey, resendFrom, siteURL)
+
 	if mode == "worker" || mode == "both" {
 		w := worker.New(st, twitterToken)
 		if err := w.Validate(); err != nil {
 			log.Fatalf("worker validate: %v", err)
 		}
 		go w.RunForever(ctx, defaultPollInterval)
+		go mailer.RunDigestScheduler(ctx, st, ml, digestHour)
+		if anthropicKey != "" {
+			go runSummarizer(ctx, st, summarizer.New(anthropicKey))
+		} else {
+			log.Println("summarizer: ANTHROPIC_API_KEY not set, skipping")
+		}
 	}
 
 	if mode == "server" || mode == "both" {
-		h := api.New(st, ca)
+		h := api.New(st, ca, ml, siteURL)
 		srv := &http.Server{
 			Addr:         ":" + port,
 			Handler:      h.Router(),
@@ -94,6 +110,38 @@ func main() {
 	log.Println("goodbye")
 }
 
+func runSummarizer(ctx context.Context, st *store.Store, sum *summarizer.Summarizer) {
+	const (
+		batchSize = 5
+		interval  = 2 * time.Minute
+	)
+	log.Println("summarizer: started")
+	for {
+		articles, err := st.UnsummarizedArticles(ctx, batchSize)
+		if err != nil {
+			log.Printf("summarizer: fetch: %v", err)
+		} else {
+			for _, a := range articles {
+				summary, err := sum.Summarize(ctx, a.Title, a.Summary)
+				if err != nil {
+					log.Printf("summarizer: article %d: %v", a.ID, err)
+					continue
+				}
+				if err := st.UpdateSummary(ctx, a.ID, summary); err != nil {
+					log.Printf("summarizer: update %d: %v", a.ID, err)
+					continue
+				}
+				log.Printf("summarizer: ✓ article %d", a.ID)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+	}
+}
+
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -120,6 +168,18 @@ func runMigrations(ctx context.Context, st *store.Store) error {
 	}
 	log.Printf("migrations: found %d file(s)", len(migrations))
 	return st.RunMigrations(ctx, migrations)
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 func requireEnv(key string) string {

@@ -6,6 +6,8 @@
 /ainews
 web/dist
 web/node_modules
+scripts/node_modules
+scripts/output
 
 # Go
 *.test

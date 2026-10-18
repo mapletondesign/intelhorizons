@@ -43,6 +43,7 @@ type FeedQuery struct {
 	Offset   int
 	SourceID int
 	Search   string
+	Category string
 }
 
 type Store struct {
@@ -80,7 +81,7 @@ func (s *Store) UpsertArticle(ctx context.Context, a Article) error {
 			(url_hash, url, title, summary, author, source_id, published_at, fetched_at, score, category)
 		VALUES
 			($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
-		ON CONFLICT (url_hash) DO UPDATE SET score = EXCLUDED.score, fetched_at = NOW()
+		ON CONFLICT (url_hash) DO UPDATE SET score = EXCLUDED.score, category = EXCLUDED.category, fetched_at = NOW()
 	`, a.URLHash, a.URL, a.Title, a.Summary, a.Author, a.SourceID,
 		a.PublishedAt, a.Score, a.Category)
 	return err
@@ -99,20 +100,30 @@ func (s *Store) Feed(ctx context.Context, q FeedQuery) ([]Article, error) {
 		args["source_id"] = q.SourceID
 	}
 	if q.Search != "" {
-		where += " AND a.search_vec @@ plainto_tsquery('english', @search)"
+		where += " AND (a.search_vec @@ websearch_to_tsquery('english', @search) OR lower(a.title) LIKE lower('%' || @search || '%'))"
 		args["search"] = q.Search
+	}
+	if q.Category != "" {
+		where += " AND a.category = @category"
+		args["category"] = q.Category
 	}
 
 	args["limit"] = q.Limit
 	args["offset"] = q.Offset
 
 	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
-		SELECT a.id, a.url_hash, a.url, a.title, a.summary, a.author,
-		       a.source_id, s.name, a.published_at, a.fetched_at, a.score, a.category
-		FROM articles a
-		JOIN sources s ON s.id = a.source_id
-		%s
-		ORDER BY a.score DESC, a.published_at DESC
+		SELECT id, url_hash, url, title, summary, author,
+		       source_id, source_name, published_at, fetched_at, score, category
+		FROM (
+			SELECT DISTINCT ON (lower(a.title))
+			       a.id, a.url_hash, a.url, a.title, a.summary, a.author,
+			       a.source_id, s.name AS source_name, a.published_at, a.fetched_at, a.score, a.category
+			FROM articles a
+			JOIN sources s ON s.id = a.source_id
+			%s
+			ORDER BY lower(a.title), a.score DESC, a.published_at DESC
+		) deduped
+		ORDER BY score DESC, published_at DESC
 		LIMIT @limit OFFSET @offset
 	`, where), args)
 	if err != nil {
@@ -194,6 +205,31 @@ func (s *Store) AllSources(ctx context.Context) ([]Source, error) {
 		sources = append(sources, src)
 	}
 	return sources, rows.Err()
+}
+
+func (s *Store) UnsummarizedArticles(ctx context.Context, limit int) ([]Article, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.url_hash, a.url, a.title, a.summary, a.author,
+		       a.source_id, s.name, a.published_at, a.fetched_at, a.score, a.category
+		FROM articles a
+		JOIN sources s ON s.id = a.source_id
+		WHERE a.summarized = false
+		  AND a.published_at > NOW() - INTERVAL '7 days'
+		ORDER BY a.score DESC, a.published_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+	return scanArticles(rows)
+}
+
+func (s *Store) UpdateSummary(ctx context.Context, id int64, summary string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE articles SET summary = $1, summarized = true WHERE id = $2`,
+		summary, id)
+	return err
 }
 
 func (s *Store) UpdateSourceFetchedAt(ctx context.Context, id int) error {

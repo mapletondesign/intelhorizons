@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelHorizons — Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0f172a;
+      --surface:      #1e293b;
+      --surface-2:    #273449;
+      --border:       #334155;
+      --text:         #e2e8f0;
+      --muted:        #94a3b8;
+      --dim:          #475569;
+      --indigo:       #6366f1;
+      --indigo-dim:   #312e81;
+      --emerald:      #10b981;
+      --emerald-dim:  #064e3b;
+      --amber:        #f59e0b;
+      --amber-dim:    #451a03;
+      --rose:         #f43f5e;
+      --rose-dim:     #4c0519;
+      --sky:          #38bdf8;
+      --sky-dim:      #0c4a6e;
+      --violet:       #a78bfa;
+      --violet-dim:   #2e1065;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      padding: 48px 32px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    .tagline {
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      max-width: 1100px;
+      margin: 0 auto 48px;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 99px;
+      background: var(--indigo-dim);
+      color: var(--indigo);
+      border: 1px solid var(--indigo);
+    }
+
+    .diagram {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── Row labels ── */
+    .layer {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .layer-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--dim);
+      text-align: right;
+      padding-right: 16px;
+      border-right: 2px solid var(--border);
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .layer-content {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── Boxes ── */
+    .box {
+      border-radius: 10px;
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      min-width: 130px;
+    }
+
+    .box-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .box-sub {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .box.indigo  { border-color: var(--indigo);  background: var(--indigo-dim); }
+    .box.emerald { border-color: var(--emerald); background: var(--emerald-dim); }
+    .box.amber   { border-color: var(--amber);   background: var(--amber-dim); }
+    .box.rose    { border-color: var(--rose);    background: var(--rose-dim); }
+    .box.sky     { border-color: var(--sky);     background: var(--sky-dim); }
+    .box.violet  { border-color: var(--violet);  background: var(--violet-dim); }
+
+    .box.indigo  .box-title { color: var(--indigo); }
+    .box.emerald .box-title { color: var(--emerald); }
+    .box.amber   .box-title { color: var(--amber); }
+    .box.rose    .box-title { color: var(--rose); }
+    .box.sky     .box-title { color: var(--sky); }
+    .box.violet  .box-title { color: var(--violet); }
+
+    /* ── Arrows ── */
+    .arrow {
+      font-size: 18px;
+      color: var(--dim);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .arrow-down-col {
+      display: flex;
+      justify-content: center;
+      color: var(--dim);
+      font-size: 20px;
+      margin: -8px 0;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      max-width: 1100px;
+      margin: 8px auto;
+      border: none;
+      border-top: 1px dashed var(--border);
+    }
+
+    /* ── Data flow section ── */
+    .flow-section {
+      max-width: 1100px;
+      margin: 48px auto 0;
+    }
+
+    .flow-section h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 24px;
+      color: var(--muted);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    .flows {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .flow-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .flow-card h3 {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 8px 0;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .flow-step:first-of-type { border-top: none; }
+
+    .step-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--dim);
+      min-width: 20px;
+      padding-top: 1px;
+    }
+
+    .step-text { color: var(--muted); line-height: 1.5; }
+    .step-text strong { color: var(--text); font-weight: 600; }
+
+    /* ── Env vars ── */
+    .env-section {
+      max-width: 1100px;
+      margin: 48px auto 0;
+    }
+
+    .env-section h2 {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .env-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+
+    .env-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .env-key { color: var(--amber); font-family: ui-monospace, monospace; font-weight: 600; }
+    .env-val { color: var(--muted); }
+
+    .required-tag {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      color: var(--rose);
+      text-transform: uppercase;
+    }
+
+    /* ── Footer ── */
+    footer {
+      max-width: 1100px;
+      margin: 48px auto 0;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--dim);
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>IntelHorizons</h1>
+    <p class="tagline">AI news aggregator — system architecture</p>
+  </div>
+  <span class="badge">Fly.io · iad</span>
+</header>
+
+<div class="diagram">
+
+  <!-- SOURCES -->
+  <div class="layer">
+    <div class="layer-label">Sources</div>
+    <div class="layer-content">
+      <div class="box sky"><div class="box-title">RSS Feeds</div><div class="box-sub">Arbitrary feeds<br>30 min interval</div></div>
+      <div class="box sky"><div class="box-title">ArXiv</div><div class="box-sub">cs.AI + cs.LG<br>30 min interval</div></div>
+      <div class="box sky"><div class="box-title">Hacker News</div><div class="box-sub">Top stories<br>30 min interval</div></div>
+      <div class="box sky"><div class="box-title">Reddit</div><div class="box-sub">r/MachineLearning<br>30 min interval</div></div>
+      <div class="box" style="opacity:.45"><div class="box-title">Twitter</div><div class="box-sub">Inactive — needs<br>BEARER_TOKEN</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-down-col">↓</div>
+
+  <!-- WORKER -->
+  <div class="layer">
+    <div class="layer-label">Worker</div>
+    <div class="layer-content">
+      <div class="box amber">
+        <div class="box-title">Fetcher</div>
+        <div class="box-sub">Polls sources on interval<br>One fetcher per source type</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box amber">
+        <div class="box-title">Scorer</div>
+        <div class="box-sub">Term weights × recency decay<br>Half-life ~24h · Score [0–10]</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box amber">
+        <div class="box-title">UpsertArticle</div>
+        <div class="box-sub">ON CONFLICT DO UPDATE<br>Refreshes score each cycle</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down-col">↓</div>
+
+  <!-- DATA LAYER -->
+  <div class="layer">
+    <div class="layer-label">Data</div>
+    <div class="layer-content">
+      <div class="box emerald">
+        <div class="box-title">PostgreSQL 16</div>
+        <div class="box-sub">sources · articles · subscribers<br>schema_migrations<br>tsvector GIN full-text index</div>
+      </div>
+      <div class="arrow">↔</div>
+      <div class="box emerald">
+        <div class="box-title">Redis 7 (Upstash)</div>
+        <div class="box-sub">Feed cache — TTL 5 min<br>Digest cache — TTL 15 min</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down-col">↓</div>
+
+  <!-- API -->
+  <div class="layer">
+    <div class="layer-label">API</div>
+    <div class="layer-content">
+      <div class="box indigo">
+        <div class="box-title">Go HTTP Server</div>
+        <div class="box-sub">chi v5 · port 8080<br>RequestID · SecurityHeaders · CORS</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box indigo"><div class="box-title">GET /api/feed</div><div class="box-sub">Paginated · filterable<br>full-text search</div></div>
+      <div class="box indigo"><div class="box-title">GET /api/digest</div><div class="box-sub">Top 20 articles<br>last 24 hours</div></div>
+      <div class="box indigo"><div class="box-title">GET /api/sources</div><div class="box-sub">All active<br>sources</div></div>
+      <div class="box indigo"><div class="box-title">POST /api/subscribe</div><div class="box-sub">Double opt-in<br>confirm · unsubscribe</div></div>
+      <div class="box indigo"><div class="box-title">GET /healthz</div><div class="box-sub">JSON — db + redis<br>status · 503 on fail</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-down-col">↓</div>
+
+  <!-- CLIENTS -->
+  <div class="layer">
+    <div class="layer-label">Clients</div>
+    <div class="layer-content">
+      <div class="box violet">
+        <div class="box-title">Vue 3 / Nuxt SPA</div>
+        <div class="box-sub">Served from web/dist<br>Feed · Digest · Sources pages<br>Tailwind · dark theme</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box violet"><div class="box-title">/ Feed</div><div class="box-sub">Ranked feed<br>search + filter</div></div>
+      <div class="box violet"><div class="box-title">/digest</div><div class="box-sub">Top 20<br>today</div></div>
+      <div class="box violet"><div class="box-title">/sources</div><div class="box-sub">Active sources<br>by type</div></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- EMAIL -->
+  <div class="layer">
+    <div class="layer-label">Email</div>
+    <div class="layer-content">
+      <div class="box rose">
+        <div class="box-title">Digest Scheduler</div>
+        <div class="box-sub">Goroutine · fires at DIGEST_HOUR UTC<br>Default 08:00 · skips if no articles</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box rose">
+        <div class="box-title">Mailer (Resend)</div>
+        <div class="box-sub">Raw HTTP · no SDK<br>Confirmation + digest templates</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box rose">
+        <div class="box-title">Subscribers</div>
+        <div class="box-sub">Double opt-in · signed tokens<br>One-click unsubscribe</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- DATA FLOWS -->
+<div class="flow-section">
+  <h2>Key data flows</h2>
+  <div class="flows">
+
+    <div class="flow-card">
+      <h3>Article ingestion (every 5 min)</h3>
+      <div class="flow-step"><span class="step-num">1</span><span class="step-text">Worker polls <strong>active sources</strong> that are due for refresh</span></div>
+      <div class="flow-step"><span class="step-num">2</span><span class="step-text">Source-specific <strong>fetcher</strong> retrieves raw articles</span></div>
+      <div class="flow-step"><span class="step-num">3</span><span class="step-text"><strong>Scorer</strong> computes relevance × recency: term weights (0.5–2.5) × exp(−age/24h)</span></div>
+      <div class="flow-step"><span class="step-num">4</span><span class="step-text"><strong>UpsertArticle</strong> writes to Postgres; ON CONFLICT updates score so it re-scores on next cycle</span></div>
+      <div class="flow-step"><span class="step-num">5</span><span class="step-text">Redis cache for <strong>/api/feed</strong> and <strong>/api/digest</strong> expires naturally (5 / 15 min TTL)</span></div>
+    </div>
+
+    <div class="flow-card">
+      <h3>Feed request</h3>
+      <div class="flow-step"><span class="step-num">1</span><span class="step-text">Client calls <strong>GET /api/feed</strong> with optional limit, offset, source, q params</span></div>
+      <div class="flow-step"><span class="step-num">2</span><span class="step-text">Handler checks <strong>Redis</strong> for a cache hit on the exact query key</span></div>
+      <div class="flow-step"><span class="step-num">3</span><span class="step-text">On miss: queries Postgres with <strong>tsvector full-text search</strong> + score + date ordering</span></div>
+      <div class="flow-step"><span class="step-num">4</span><span class="step-text">Result written back to Redis and returned as <strong>JSON</strong></span></div>
+    </div>
+
+    <div class="flow-card">
+      <h3>Email subscription</h3>
+      <div class="flow-step"><span class="step-num">1</span><span class="step-text">User POSTs email to <strong>/api/subscribe</strong></span></div>
+      <div class="flow-step"><span class="step-num">2</span><span class="step-text">Store upserts subscriber with random 64-char <strong>token</strong>; handles re-subscribe / pending states</span></div>
+      <div class="flow-step"><span class="step-num">3</span><span class="step-text">Mailer sends <strong>confirmation email</strong> via Resend with confirm link</span></div>
+      <div class="flow-step"><span class="step-num">4</span><span class="step-text">User clicks link → <strong>GET /api/subscribe/confirm?token=…</strong> → confirmed=true</span></div>
+      <div class="flow-step"><span class="step-num">5</span><span class="step-text">Redirects to <strong>/?subscribed=1</strong> for frontend toast</span></div>
+    </div>
+
+    <div class="flow-card">
+      <h3>Daily digest email</h3>
+      <div class="flow-step"><span class="step-num">1</span><span class="step-text"><strong>Scheduler goroutine</strong> wakes at next DIGEST_HOUR UTC (default 08:00)</span></div>
+      <div class="flow-step"><span class="step-num">2</span><span class="step-text">Fetches <strong>top 20 articles</strong> from last 24h via DailyDigest query</span></div>
+      <div class="flow-step"><span class="step-num">3</span><span class="step-text">Fetches all <strong>confirmed, active subscribers</strong></span></div>
+      <div class="flow-step"><span class="step-num">4</span><span class="step-text">Sends one <strong>HTML email per subscriber</strong> via Resend REST API with personalised unsubscribe link</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ENV VARS -->
+<div class="env-section">
+  <h2>Environment variables</h2>
+  <div class="env-grid">
+    <div class="env-row"><span class="env-key">DATABASE_URL</span><span class="env-val">Postgres connection string</span><span class="required-tag">required</span></div>
+    <div class="env-row"><span class="env-key">REDIS_URL</span><span class="env-val">redis://… (default: localhost:6379)</span></div>
+    <div class="env-row"><span class="env-key">RESEND_API_KEY</span><span class="env-val">re_… from Resend dashboard</span><span class="required-tag">required for email</span></div>
+    <div class="env-row"><span class="env-key">RESEND_FROM</span><span class="env-val">IntelHorizons &lt;digest@intelhorizons.com&gt;</span></div>
+    <div class="env-row"><span class="env-key">SITE_URL</span><span class="env-val">https://intelhorizons.com</span></div>
+    <div class="env-row"><span class="env-key">DIGEST_HOUR</span><span class="env-val">Hour (UTC) to send digest · default 8</span></div>
+    <div class="env-row"><span class="env-key">CORS_ORIGIN</span><span class="env-val">Allowed origin · default intelhorizons.com</span></div>
+    <div class="env-row"><span class="env-key">PORT</span><span class="env-val">HTTP port · default 8080</span></div>
+    <div class="env-row"><span class="env-key">MODE</span><span class="env-val">server | worker | both (default)</span></div>
+    <div class="env-row"><span class="env-key">TWITTER_BEARER_TOKEN</span><span class="env-val">Activates Twitter fetcher if set</span></div>
+  </div>
+</div>
+
+<footer>
+  <span>intelhorizons — Go + chi + pgx + Redis + Nuxt 3 + Resend · deployed on Fly.io iad</span>
+  <span>Stages 1–4 complete</span>
+</footer>
+
+</body>
+</html>

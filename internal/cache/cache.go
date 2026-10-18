@@ -56,8 +56,8 @@ func (c *Cache) Set(ctx context.Context, key string, val any, ttl time.Duration)
 	return c.rdb.Set(ctx, key, b, ttl).Err()
 }
 
-func (c *Cache) FeedKey(sourceID, limit, offset int, search string) string {
-	return fmt.Sprintf("feed:src=%d:lim=%d:off=%d:q=%s", sourceID, limit, offset, search)
+func (c *Cache) FeedKey(sourceID, limit, offset int, search, category string) string {
+	return fmt.Sprintf("feed:src=%d:lim=%d:off=%d:q=%s:cat=%s", sourceID, limit, offset, search, category)
 }
 
 func (c *Cache) DigestKey() string {

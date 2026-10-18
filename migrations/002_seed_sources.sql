@@ -11,16 +11,27 @@ INSERT INTO sources (name, type, url, fetch_interval_mins) VALUES
 ('IEEE Spectrum AI',        'rss', 'https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss',                                60),
 ('Analytics Vidhya',        'rss', 'https://www.analyticsvidhya.com/feed/',                                                            60),
 ('Bloomberg Technology',    'rss', 'https://feeds.bloomberg.com/technology/news.rss',                                                  60),
-('Reuters Technology',      'rss', 'https://feeds.reuters.com/reuters/technologyNews',                                                 60),
 
--- RSS: Newsletters / Substacks
-('The Batch',               'rss', 'https://www.deeplearning.ai/the-batch/feed/',                                                      360),
+-- RSS: Newsletters / Substacks / Blogs
+('The Gradient',            'rss', 'https://thegradient.pub/rss/',                                                                    360),
 ('Import AI',               'rss', 'https://importai.substack.com/feed',                                                               360),
 ('Ahead of AI',             'rss', 'https://magazine.sebastianraschka.com/feed',                                                       360),
+('Simon Willison',          'rss', 'https://simonwillison.net/atom/everything/',                                                        60),
+('Interconnects',           'rss', 'https://www.interconnects.ai/feed',                                                               120),
 
 -- RSS: Lab blogs
 ('Hugging Face Blog',       'rss', 'https://huggingface.co/blog/feed.xml',                                                             60),
-('Papers With Code',        'rss', 'https://paperswithcode.com/rss',                                                                   60),
+('OpenAI Blog',             'rss', 'https://openai.com/news/rss.xml',                                                                  60),
+('Google DeepMind Blog',    'rss', 'https://deepmind.google/blog/rss.xml',                                                            120),
+('Anthropic News',          'rss', 'https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml',      120),
+('GitHub Blog AI',          'rss', 'https://github.blog/ai-and-ml/feed/',                                                            120),
+
+-- RSS: Media
+('Engadget',                'rss', 'https://www.engadget.com/rss.xml',                                                                 60),
+
+-- RSS: Research journals
+('JMLR',                    'rss', 'https://www.jmlr.org/jmlr.xml',                                                                  360),
+('IEEE Xplore AI',          'rss', 'https://ieeexplore.ieee.org/rss/TOC9234890.XML',                                                 360),
 
 -- ArXiv: cs.AI and cs.LG daily
 ('ArXiv cs.AI',             'arxiv', 'https://export.arxiv.org/api/query?search_query=cat:cs.AI&max_results=30&sortBy=submittedDate&sortOrder=descending', 120),
@@ -30,12 +41,8 @@ INSERT INTO sources (name, type, url, fetch_interval_mins) VALUES
 ('Hacker News AI',          'hn',    'https://hn.algolia.com/api/v1/search_by_date?tags=story&query=AI+LLM+machine+learning&hitsPerPage=30', 30),
 
 -- Reddit: read-only JSON API
-('Reddit r/MachineLearning','reddit','https://www.reddit.com/r/MachineLearning/new.json?limit=25',  30),
-('Reddit r/artificial',     'reddit','https://www.reddit.com/r/artificial/new.json?limit=25',       30),
-('Reddit r/LocalLLaMA',     'reddit','https://www.reddit.com/r/LocalLLaMA/new.json?limit=25',       30),
-
--- Twitter/X: bearer-token required; inactive until configured
-('Reddit r/Singularity',    'reddit','https://www.reddit.com/r/singularity/new.json?limit=25',      30)
+('Reddit r/MachineLearning','reddit','https://www.reddit.com/r/MachineLearning/.rss',              60),
+('Reddit r/LocalLLaMA',     'reddit','https://www.reddit.com/r/LocalLLaMA/.rss',                    60)
 
 ON CONFLICT (name) DO NOTHING;
 

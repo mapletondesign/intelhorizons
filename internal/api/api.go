@@ -12,16 +12,19 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"intelhorizons/internal/cache"
+	"intelhorizons/internal/mailer"
 	"intelhorizons/internal/store"
 )
 
 type Handler struct {
-	store *store.Store
-	cache *cache.Cache
+	store   *store.Store
+	cache   *cache.Cache
+	mailer  *mailer.Mailer
+	siteURL string
 }
 
-func New(st *store.Store, ca *cache.Cache) *Handler {
-	return &Handler{store: st, cache: ca}
+func New(st *store.Store, ca *cache.Cache, ml *mailer.Mailer, siteURL string) *Handler {
+	return &Handler{store: st, cache: ca, mailer: ml, siteURL: siteURL}
 }
 
 func (h *Handler) Router() http.Handler {
@@ -37,6 +40,9 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/api/digest", h.digest)
 	r.Get("/api/sources", h.sources)
 	r.Get("/healthz", h.healthz)
+	r.Post("/api/subscribe", h.subscribe)
+	r.Get("/api/subscribe/confirm", h.confirmSubscription)
+	r.Get("/api/unsubscribe", h.unsubscribe)
 
 	r.Handle("/*", spaHandler("web/dist"))
 
@@ -49,12 +55,13 @@ func (h *Handler) feed(w http.ResponseWriter, r *http.Request) {
 		Offset:   queryInt(r, "offset", 0),
 		SourceID: queryInt(r, "source", 0),
 		Search:   r.URL.Query().Get("q"),
+		Category: r.URL.Query().Get("category"),
 	}
 	if q.Limit > 100 {
 		q.Limit = 100
 	}
 
-	cacheKey := h.cache.FeedKey(q.SourceID, q.Limit, q.Offset, q.Search)
+	cacheKey := h.cache.FeedKey(q.SourceID, q.Limit, q.Offset, q.Search, q.Category)
 	var articles []store.Article
 	if hit, err := h.cache.Get(r.Context(), cacheKey, &articles); err != nil {
 		log.Printf("[%s] cache get feed: %v", chimw.GetReqID(r.Context()), err)
@@ -68,6 +75,9 @@ func (h *Handler) feed(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[%s] store.Feed: %v", chimw.GetReqID(r.Context()), err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+	if articles == nil {
+		articles = []store.Article{}
 	}
 
 	if err := h.cache.Set(r.Context(), cacheKey, articles, h.cache.FeedTTL()); err != nil {

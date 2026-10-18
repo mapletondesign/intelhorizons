@@ -1,0 +1,19 @@
+{
+  "name": "intelhorizons-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "tsx generate-cards.ts",
+    "generate:top": "tsx generate-cards.ts --limit 10",
+    "generate:category": "tsx generate-cards.ts --category",
+    "generate:profile": "tsx generate-profile.ts"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "satori": "^0.10.13"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}

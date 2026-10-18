@@ -43,12 +43,15 @@ func (r *RSS) Fetch(ctx context.Context, src store.Source) ([]store.Article, err
 			continue
 		}
 
-		summary := item.Description
-		if item.Content != "" && len(item.Content) > len(summary) {
-			summary = item.Content
+		summary := stripHTML(item.Description)
+		if item.Content != "" {
+			clean := stripHTML(item.Content)
+			if len(clean) > len(summary) {
+				summary = clean
+			}
 		}
-		if len(summary) > 1000 {
-			summary = summary[:1000]
+		if r := []rune(summary); len(r) > 1000 {
+			summary = string(r[:1000])
 		}
 
 		author := ""

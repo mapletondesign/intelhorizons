@@ -24,8 +24,8 @@ Pulls articles from RSS feeds, ArXiv, Hacker News, and Reddit. Scores by AI rele
 |---|---|---|---|
 | 1 | Backend — ingestion, scorer, API, deploy | Complete | All fetchers live except Twitter |
 | 2 | Backend cleanup | Not started | Fix known gaps before shipping frontend |
-| 3 | Vue 3 frontend | Not started | Feed, digest, source filter, search |
-| 4 | Email digest | Not started | Daily top-20 email via Resend or Postmark |
+| 3 | Vue 3 frontend | Complete | Feed, digest, source pages |
+| 4 | Email digest | Complete | Resend — double opt-in, daily 08:00 UTC, signed unsubscribe |
 | 5 | Auth + personalization | Not started | Saved articles, custom source weights |
 | 6 | Source management UI | Not started | Admin UI to add/remove/configure sources |
 | 7 | Twitter integration | Blocked | Needs `TWITTER_BEARER_TOKEN` |
